@@ -11,55 +11,51 @@ async function init() {
     context.configure({ device, format });
 
     const camera = createCamera();
-    const maxParticles = 3000;
+    camera.zoom = 3.5; // Initial zoom for the 3x play area
     
     const inputs = {
         circle: document.getElementById("circle-count") as HTMLInputElement,
         tri: document.getElementById("tri-count") as HTMLInputElement,
         star: document.getElementById("star-count") as HTMLInputElement,
+        gravity: document.getElementById("gravity-toggle") as HTMLInputElement,
     };
 
+    // Updated Struct: pos(8), vel(8), col(16), size(4), kind(4), rot(4), angVel(4), rest(4), pad(8) = 64 bytes
     const particleBuffer = device.createBuffer({
-        size: maxParticles * 48,
+        size: 3000 * 64, 
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
     let currentParticleCount = 0;
 
     function createParticles() {
-        const counts = [
-            parseInt(inputs.circle.value),
-            parseInt(inputs.tri.value),
-            parseInt(inputs.star.value)
-        ];
+        const counts = [parseInt(inputs.circle.value), parseInt(inputs.tri.value), parseInt(inputs.star.value)];
         currentParticleCount = counts.reduce((a, b) => a + b, 0);
         
-        const data = new Float32Array(maxParticles * 12); 
+        const data = new Float32Array(3000 * 16); // 64 bytes / 4 = 16 floats
         let offset = 0;
 
         counts.forEach((count, kind) => {
             for (let i = 0; i < count; i++) {
-                const idx = offset * 12;
-                // Random starting position
-                data[idx] = Math.random() * 2 - 1;     
-                data[idx + 1] = Math.random() * 2 - 1; 
-                
-                // Random starting velocity (Sliding effect)
-                data[idx + 2] = (Math.random() * 2 - 1) * 0.5; // vel x
-                data[idx + 3] = (Math.random() * 2 - 1) * 0.5; // vel y
-                
-                data[idx + 4] = Math.random();         
-                data[idx + 5] = Math.random();         
-                data[idx + 6] = Math.random();         
-                data[idx + 7] = 1.0;                   
-                data[idx + 8] = 0.02 + Math.random() * 0.04; // Slightly larger sizes
-                data[idx + 9] = kind;                  
+                const idx = offset * 16;
+                data[idx] = Math.random() * 6 - 3;      // x
+                data[idx + 1] = Math.random() * 6 - 3;  // y
+                data[idx + 2] = (Math.random() * 2 - 1) * 0.8; // vel x
+                data[idx + 3] = (Math.random() * 2 - 1) * 0.8; // vel y
+                data[idx + 4] = Math.random();          // r
+                data[idx + 5] = Math.random();          // g
+                data[idx + 6] = Math.random();          // b
+                data[idx + 7] = 1.0;                    // a
+                data[idx + 8] = 0.04 + Math.random() * 0.08; // size
+                data[idx + 9] = kind;                   // kind
+                data[idx + 10] = Math.random() * 6.28;  // rotation
+                data[idx + 11] = (Math.random() * 2 - 1) * 2.0; // angularVel
+                data[idx + 12] = 0.4 + Math.random() * 0.5;    // restitution (bounciness)
                 offset++;
             }
         });
 
         device.queue.writeBuffer(particleBuffer, 0, data);
-        
         document.getElementById("circle-val")!.textContent = inputs.circle.value;
         document.getElementById("tri-val")!.textContent = inputs.tri.value;
         document.getElementById("star-val")!.textContent = inputs.star.value;
@@ -77,6 +73,8 @@ async function init() {
 
     const shaderModule = device.createShaderModule({ code: shaderCode });
 
+    // (Layout and Pipeline code from previous turn remains identical, 
+    // but ensured bindGroupLayout matches the vertex shader's bindings)
     const computeLayout = device.createBindGroupLayout({
         entries: [
             { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
@@ -122,12 +120,11 @@ async function init() {
     });
 
     function frame() {
-        // dt=0.01, friction=1.0 (no slowdown), attraction=0 (unused), count
-        device.queue.writeBuffer(simParamsBuffer, 0, new Float32Array([0.01, 1.0, 0.0, currentParticleCount]));
+        const gravity = inputs.gravity.checked ? 0.8 : 0.0;
+        device.queue.writeBuffer(simParamsBuffer, 0, new Float32Array([0.016, 1.0, gravity, currentParticleCount]));
         device.queue.writeBuffer(cameraBuffer, 0, new Float32Array([camera.x, camera.y, camera.zoom, 0]));
 
         const encoder = device.createCommandEncoder();
-        
         const computePass = encoder.beginComputePass();
         computePass.setPipeline(computePipeline);
         computePass.setBindGroup(0, computeBindGroup);
@@ -143,7 +140,7 @@ async function init() {
         });
         renderPass.setPipeline(renderPipeline);
         renderPass.setBindGroup(0, renderBindGroup);
-        renderPass.draw(48, currentParticleCount);
+        renderPass.draw(48, currentParticleCount); 
         renderPass.end();
 
         device.queue.submit([encoder.finish()]);
@@ -151,7 +148,7 @@ async function init() {
     }
 
     document.getElementById("reset-btn")!.onclick = createParticles;
-    Object.values(inputs).forEach(input => input.oninput = createParticles);
+    [inputs.circle, inputs.tri, inputs.star].forEach(input => input.oninput = createParticles);
     setupCameraControls(canvas, camera, () => {});
 
     createParticles();

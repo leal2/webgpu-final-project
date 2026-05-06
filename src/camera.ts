@@ -11,7 +11,7 @@ export function createCamera(): Camera {
     return {
         x: 0,
         y: 0,
-        zoom: 1.0,
+        zoom: 2.0,
         isDragging: false,
         lastMouseX: 0,
         lastMouseY: 0
