@@ -38,8 +38,8 @@ async function init() {
         counts.forEach((count, kind) => {
             for (let i = 0; i < count; i++) {
                 const idx = offset * 16;
-                data[idx] = Math.random() * 6 - 3;      // x
-                data[idx + 1] = Math.random() * 6 - 3;  // y
+                data[idx] = Math.random() * 10 - 5;      // x
+                data[idx + 1] = Math.random() * 10 - 5;  // y
                 data[idx + 2] = (Math.random() * 2 - 1) * 0.8; // vel x
                 data[idx + 3] = (Math.random() * 2 - 1) * 0.8; // vel y
                 data[idx + 4] = Math.random();          // r
@@ -120,7 +120,7 @@ async function init() {
     });
 
     function frame() {
-        const gravity = inputs.gravity.checked ? 0.8 : 0.0;
+        const gravity = inputs.gravity.checked ? 1.5 : 0.0; 
         device.queue.writeBuffer(simParamsBuffer, 0, new Float32Array([0.016, 1.0, gravity, currentParticleCount]));
         device.queue.writeBuffer(cameraBuffer, 0, new Float32Array([camera.x, camera.y, camera.zoom, 0]));
 

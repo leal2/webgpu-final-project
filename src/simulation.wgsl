@@ -34,48 +34,43 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
 
     var p = particlesCompute[i];
 
-    // --- 1. DAMPING & LIMITS ---
-    // Apply "Air Resistance" (Damping) to stop infinite energy gain
-    let linearDamping = 0.995; 
-    let angularDamping = 0.98;
-    
+    // --- 1. MOTION & MODES ---
+    // Reduced damping slightly to keep things energetic
+    let linearDamping = 0.998; 
+    let angularDamping = 0.97;
     p.vel *= linearDamping;
     p.angularVel *= angularDamping;
 
-    // --- 2. MOTION & GRAVITY ---
     if (params.gravity > 0.0) {
         p.vel.y -= params.gravity * params.dt;
     } else {
-        // CONSTANT MOTION: Keep a minimum speed, but clamp the maximum
         let speed = length(p.vel);
-        if (speed > 0.0) {
-            // Keep speed between 0.5 and 2.0
-            let targetSpeed = clamp(speed, 0.5, 2.0);
-            p.vel = (p.vel / speed) * targetSpeed;
+        if (speed < 0.6 && speed > 0.001) {
+            p.vel = normalize(p.vel) * 0.6; 
         }
     }
 
     p.pos += p.vel * params.dt;
     p.rotation += p.angularVel * params.dt;
 
-    // --- 3. COLLISIONS ---
+    // --- 2. PHYSICS & ANTI-CLUMPING ---
     for (var j = 0u; j < u32(params.numParticles); j++) {
         if (i == j) { continue; }
         var other = particlesCompute[j];
         
-        var rA = p.size;
-        if (p.kind > 0.5) { rA *= 0.85; }
-        var rB = other.size;
-        if (other.kind > 0.5) { rB *= 0.85; }
-
-        let collisionDist = rA + rB;
+        // Restore full radii so they don't visually overlap
+        let collisionDist = p.size + other.size;
         let diff = p.pos - other.pos;
         let dist = length(diff);
 
         if (dist < collisionDist && dist > 0.0) {
             let normal = diff / dist;
-            let overlap = collisionDist - dist;
-            p.pos += normal * overlap * 0.5;
+            
+            // SOFT PRESSURE: Decisively push apart even at rest
+            // This is the "Anti-Clump" secret
+            let pressure = (1.0 - (dist / collisionDist)) * 0.02;
+            p.pos += normal * pressure;
+            p.vel += normal * pressure;
 
             let relativeVel = p.vel - other.vel;
             let velocityAlongNormal = dot(relativeVel, normal);
@@ -83,40 +78,31 @@ fn computeMain(@builtin(global_invocation_id) id: vec3u) {
             if (velocityAlongNormal < 0.0) {
                 let e = min(p.restitution, other.restitution);
                 let impulse = -(1.0 + e) * velocityAlongNormal;
-                
                 let massSum = p.size + other.size;
-                let impulseVec = (impulse * normal * other.size) / massSum;
-                p.vel += impulseVec;
+                p.vel += (impulse * normal * other.size) / massSum;
 
-                // --- SOFTENED ANGULAR IMPULSE ---
+                // Angular Momentum
                 let tangent = vec2f(-normal.y, normal.x);
-                // Reduced multiplier (0.1) to prevent "whiplash" spinning
-                let torque = dot(relativeVel, tangent) * 0.1; 
-                p.angularVel += (torque * impulse) / p.size;
+                let torque = dot(relativeVel, tangent);
+                p.angularVel += (torque * 0.1) / p.size;
             }
         }
     }
 
-    // --- 4. BOUNDARIES ---
-    let limit = 3.0;
+    // --- 3. BOUNDARIES ---
+    let limit = 5.0;
+    let bounceEpsilon = 0.02;
     if (abs(p.pos.x) > limit) {
-        p.pos.x = sign(p.pos.x) * limit;
+        p.pos.x = sign(p.pos.x) * (limit - bounceEpsilon);
         p.vel.x *= -p.restitution;
-        p.angularVel *= 0.95; // Damping on impact
     }
     if (abs(p.pos.y) > limit) {
-        p.pos.y = sign(p.pos.y) * limit;
+        p.pos.y = sign(p.pos.y) * (limit - bounceEpsilon);
         p.vel.y *= -p.restitution;
-        p.angularVel *= 0.95;
     }
-
-    // Clamp absolute maximums to prevent "NaN" or teleporting errors
-    p.vel = clamp(p.vel, vec2f(-5.0), vec2f(5.0));
-    p.angularVel = clamp(p.angularVel, -10.0, 10.0);
 
     particlesCompute[i] = p;
 }
-
 struct VertexOutput {
     @builtin(position) clip_pos: vec4f,
     @location(0) color: vec4f,
