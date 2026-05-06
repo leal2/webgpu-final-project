@@ -3,56 +3,41 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
-                           integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
-                           crossorigin="anonymous">
-
-    <title>WebGPU Basic Rendering</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
+    <title>WebGPU 2D Physics Sim</title>
     <style>
-        .canvas-container {
-            display: flex;
-            justify-content: center;
-        }
-        #description {
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
+        body { background: #121212; color: white; }
+        .canvas-container { display: flex; justify-content: center; background: #000; border-radius: 8px; overflow: hidden; }
+        #description { padding: 20px; background: #1e1e1e; border-radius: 8px; }
+        label { font-weight: bold; margin-top: 10px; display: block; }
+        .count-display { float: right; color: #007bff; }
     </style>
 </head>
 <body>
-    <div class="container mt-4">
+    <div class="container-fluid mt-4">
         <div class="row">
-            <div class="col-12 text-center">
-                <h4>WebGPU Basic Rendering</h4>
-            </div>
-            <div red id="info">
-                <pre style="color:red;"></pre>
-            </div>
-        </div>
-        
-        <div class="row mt-3">
             <div class="col-md-8 canvas-container">
-                <canvas id="webgpu-canvas" class="img-fluid" width="1200" height="1200"></canvas>
-                <div class="alert alert-danger" id="no-webgpu" style="display:none;">
-                    <h4>Error: Your browser does not support WebGPU</h4>
-                    <p>You can find out how to get access to it in Chrome Canary
-                    <a href="https://web.dev/gpu/#use">here</a>.</p>
-                </div>
+                <canvas id="webgpu-canvas" width="1600" height="1600" style="width: 100%; height: auto; aspect-ratio: 1/1;"></canvas>
             </div>
-            
-            <div class="col-md-4" id="description">
-                
-                <label for="triangle-count" class="mt-2 mb-1">How many triangles?</label>
-                <input id="triangle-count" type="range" class="custom-range" min="1" max="1000" value="5">
-                <div class="text-muted">Count: <span id="triangle-count-value">5</span></div>
-                <button id="randomize-btn" class="btn btn-primary mt-3">Randomize Triangles</button>
+            <div class="col-md-4">
+                <div id="description">
+                    <h4>Physics Simulation</h4>
+                    <p class="text-muted">Compute-shader driven particles with shape-specific attraction.</p>
+                    <hr style="border-color: #444;">
+                    
+                    <label>Circles <span id="circle-val" class="count-display">200</span></label>
+                    <input id="circle-count" type="range" class="custom-range" min="0" max="1000" value="200">
+
+                    <label>Triangles <span id="tri-val" class="count-display">200</span></label>
+                    <input id="tri-count" type="range" class="custom-range" min="0" max="1000" value="200">
+
+                    <label>Stars <span id="star-val" class="count-display">200</span></label>
+                    <input id="star-count" type="range" class="custom-range" min="0" max="1000" value="200">
+
+                    <button id="reset-btn" class="btn btn-outline-primary btn-block mt-4">Reset Simulation</button>
+                </div>
             </div>
         </div>
     </div>
-    
-    <script src="bundle.js"></script>
 </body>
 </html>

@@ -1,204 +1,161 @@
-import shaderCode from "./triangle.wgsl";
-import { 
-    createCamera, 
-    setupCameraControls 
-} from "./camera";
+import shaderCode from "./simulation.wgsl";
+import { createCamera, setupCameraControls } from "./camera";
 
-async function main() {
-    // Request an adapter and device
+async function init() {
     const adapter = await navigator.gpu.requestAdapter();
-    const device = await adapter.requestDevice();
-
-    // Configure rendering context
+    const device = (await adapter?.requestDevice())!;
     const canvas = document.getElementById("webgpu-canvas") as HTMLCanvasElement;
-    const context = canvas.getContext("webgpu") as GPUCanvasContext;
+    const context = canvas.getContext("webgpu")!;
     const format = navigator.gpu.getPreferredCanvasFormat();
-    context.configure({
-        device,
-        format,
-    });
 
-    // Initialize camera
+    context.configure({ device, format });
+
     const camera = createCamera();
-
-    // Triangle interface
-    interface Triangle {
-        x: number;
-        y: number;
-        color: number[];
-    }
-    const triangleCountInput = document.getElementById("triangle-count") as HTMLInputElement;
-    const triangleCountValue = document.getElementById("triangle-count-value") as HTMLSpanElement;
-    const maxTriangles = Math.max(1, Math.floor(Number(triangleCountInput.max) || 100));
-    const getTriangleCount = (): number => {
-        const rawCount = Math.floor(Number(triangleCountInput.value) || 1);
-        const clampedCount = Math.min(maxTriangles, Math.max(1, rawCount));
-
-        // Keep the slider state aligned with enforced bounds.
-        if (clampedCount !== rawCount) {
-            triangleCountInput.value = String(clampedCount);
-        }
-
-        return clampedCount;
+    const maxParticles = 3000;
+    
+    const inputs = {
+        circle: document.getElementById("circle-count") as HTMLInputElement,
+        tri: document.getElementById("tri-count") as HTMLInputElement,
+        star: document.getElementById("star-count") as HTMLInputElement,
     };
-    let triangleBuffer : GPUBuffer;
 
-    // Generate random triangles based on selected count
-    function generateTriangles(count: number) {
-        const triangles = Array.from({ length: count }, () => ({
-            x: Math.random() * 1.2 - 0.6,
-            y: Math.random() * 1.2 - 0.6,
-            color: [
-                Math.random(),
-                Math.random(),
-                Math.random(),
-                1.0
-            ]
-        }));
+    const particleBuffer = device.createBuffer({
+        size: maxParticles * 48,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+
+    let currentParticleCount = 0;
+
+    function createParticles() {
+        const counts = [
+            parseInt(inputs.circle.value),
+            parseInt(inputs.tri.value),
+            parseInt(inputs.star.value)
+        ];
+        currentParticleCount = counts.reduce((a, b) => a + b, 0);
         
-        return triangles;
-    }
+        const data = new Float32Array(maxParticles * 12); 
+        let offset = 0;
 
-    // Set up triangle data
-    function updateTriangleBuffer(triangles : Triangle[], device : GPUDevice) {
-        const triangleData = new Float32Array(maxTriangles * 8);
-        triangles.forEach((triangle : Triangle, i : number) => {
-            const offset = i * 8;
-            triangleData[offset] = triangle.x;
-            triangleData[offset + 1] = triangle.y;
-            triangleData[offset + 2] = 0.0;
-            triangleData[offset + 3] = 0.0;
-            triangleData[offset + 4] = triangle.color[0];
-            triangleData[offset + 5] = triangle.color[1];
-            triangleData[offset + 6] = triangle.color[2];
-            triangleData[offset + 7] = triangle.color[3];
+        counts.forEach((count, kind) => {
+            for (let i = 0; i < count; i++) {
+                const idx = offset * 12;
+                // Random starting position
+                data[idx] = Math.random() * 2 - 1;     
+                data[idx + 1] = Math.random() * 2 - 1; 
+                
+                // Random starting velocity (Sliding effect)
+                data[idx + 2] = (Math.random() * 2 - 1) * 0.5; // vel x
+                data[idx + 3] = (Math.random() * 2 - 1) * 0.5; // vel y
+                
+                data[idx + 4] = Math.random();         
+                data[idx + 5] = Math.random();         
+                data[idx + 6] = Math.random();         
+                data[idx + 7] = 1.0;                   
+                data[idx + 8] = 0.02 + Math.random() * 0.04; // Slightly larger sizes
+                data[idx + 9] = kind;                  
+                offset++;
+            }
         });
-        if (triangleBuffer) {
-            device.queue.writeBuffer(triangleBuffer, 0, triangleData);
-        } else {
-            triangleBuffer = device.createBuffer({
-                size: triangleData.byteLength,
-                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-                mappedAtCreation: true,
-            });
-            new Float32Array(triangleBuffer.getMappedRange()).set(triangleData);
-            triangleBuffer.unmap();
-        }
-        return triangleBuffer;
+
+        device.queue.writeBuffer(particleBuffer, 0, data);
+        
+        document.getElementById("circle-val")!.textContent = inputs.circle.value;
+        document.getElementById("tri-val")!.textContent = inputs.tri.value;
+        document.getElementById("star-val")!.textContent = inputs.star.value;
     }
 
-    let triangles = generateTriangles(getTriangleCount());
-    triangleBuffer = updateTriangleBuffer(triangles, device);
-
-    // Keep the slider label in sync with the rendered triangle count.
-    triangleCountValue.textContent = String(triangles.length);
-
-    triangleCountInput.addEventListener("input", () => {
-        const count = getTriangleCount();
-        triangleCountValue.textContent = String(count);
-        triangles = generateTriangles(count);
-        updateTriangleBuffer(triangles, device);
-    });
-
-    // Add event listener for randomize button
-    document.getElementById("randomize-btn").addEventListener("click", () => {
-        triangles = generateTriangles(getTriangleCount());
-        updateTriangleBuffer(triangles, device);
-    });
-
-    // Create a uniform buffer for camera data
-    // We need 3 float32 values (12 bytes) but must align to 16 bytes for WebGPU
-    const cameraUniformBuffer = device.createBuffer({
-        size: 16, // Properly aligned size for 3 floats (x, y, zoom)
+    const simParamsBuffer = device.createBuffer({
+        size: 16,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    // Update camera uniforms
-    function updateCameraUniform(): void {
-        device.queue.writeBuffer(
-        cameraUniformBuffer,
-        0,
-        new Float32Array([camera.x, camera.y, camera.zoom, 0.0]) // Add padding for alignment
-        );
-    }
+    const cameraBuffer = device.createBuffer({
+        size: 16,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
 
-    updateCameraUniform();
-    setupCameraControls(canvas, camera, updateCameraUniform);
+    const shaderModule = device.createShaderModule({ code: shaderCode });
 
-    // Create bind group layout (now with camera uniform buffer)
-    const bindGroupLayout = device.createBindGroupLayout({
+    const computeLayout = device.createBindGroupLayout({
         entries: [
-        {
-            binding: 0,
-            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-            buffer: { type: "read-only-storage" }
-        },
-        {
-            binding: 1,
-            visibility: GPUShaderStage.VERTEX,
-            buffer: { type: "uniform" }
-        }
+            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+            { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } }
         ]
     });
 
-    const bindGroup = device.createBindGroup({
-        layout: bindGroupLayout,
+    const renderLayout = device.createBindGroupLayout({
         entries: [
-        {
-            binding: 0,
-            resource: { buffer: triangleBuffer }
-        },
-        {
-            binding: 1,
-            resource: { buffer: cameraUniformBuffer }
-        }
+            { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+            { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } }
         ]
     });
 
-    // Create shader module
-    const shaderModule = device.createShaderModule({
-        code: shaderCode
+    const computePipeline = device.createComputePipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [computeLayout] }),
+        compute: { module: shaderModule, entryPoint: "computeMain" }
     });
 
-    // Create pipeline
-    const pipeline = device.createRenderPipeline({
-        layout: device.createPipelineLayout({
-        bindGroupLayouts: [bindGroupLayout]
-        }),
-        vertex: {
-        module: shaderModule,
-        entryPoint: "vertexMain"
-        },
-        fragment: {
-        module: shaderModule,
-        entryPoint: "fragmentMain",
-        targets: [{ format }]
-        }
+    const renderPipeline = device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [renderLayout] }),
+        vertex: { module: shaderModule, entryPoint: "vertexMain" },
+        fragment: { module: shaderModule, entryPoint: "fragmentMain", targets: [{ format }] },
+        primitive: { topology: "triangle-list" }
     });
 
-    // Render function
-    function render(): void {
+    const computeBindGroup = device.createBindGroup({
+        layout: computeLayout,
+        entries: [
+            { binding: 0, resource: { buffer: particleBuffer } },
+            { binding: 1, resource: { buffer: simParamsBuffer } },
+            { binding: 2, resource: { buffer: cameraBuffer } }
+        ]
+    });
+
+    const renderBindGroup = device.createBindGroup({
+        layout: renderLayout,
+        entries: [
+            { binding: 2, resource: { buffer: cameraBuffer } },
+            { binding: 3, resource: { buffer: particleBuffer } }
+        ]
+    });
+
+    function frame() {
+        // dt=0.01, friction=1.0 (no slowdown), attraction=0 (unused), count
+        device.queue.writeBuffer(simParamsBuffer, 0, new Float32Array([0.01, 1.0, 0.0, currentParticleCount]));
+        device.queue.writeBuffer(cameraBuffer, 0, new Float32Array([camera.x, camera.y, camera.zoom, 0]));
+
+        const encoder = device.createCommandEncoder();
         
-        const commandEncoder = device.createCommandEncoder();
-        const pass = commandEncoder.beginRenderPass({
-        colorAttachments: [{
-            view: context.getCurrentTexture().createView(),
-            loadOp: "clear",
-            storeOp: "store",
-            clearValue: { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }
-        }]
+        const computePass = encoder.beginComputePass();
+        computePass.setPipeline(computePipeline);
+        computePass.setBindGroup(0, computeBindGroup);
+        computePass.dispatchWorkgroups(Math.ceil(currentParticleCount / 64));
+        computePass.end();
+
+        const renderPass = encoder.beginRenderPass({
+            colorAttachments: [{
+                view: context.getCurrentTexture().createView(),
+                clearValue: { r: 0.05, g: 0.05, b: 0.05, a: 1.0 },
+                loadOp: "clear", storeOp: "store",
+            }]
         });
-        
-        pass.setPipeline(pipeline);
-        pass.setBindGroup(0, bindGroup);
-        pass.draw(3, triangles.length); // 3 vertices per triangle
-        pass.end();
-        
-        device.queue.submit([commandEncoder.finish()]);
-        requestAnimationFrame(render);
+        renderPass.setPipeline(renderPipeline);
+        renderPass.setBindGroup(0, renderBindGroup);
+        renderPass.draw(48, currentParticleCount);
+        renderPass.end();
+
+        device.queue.submit([encoder.finish()]);
+        requestAnimationFrame(frame);
     }
 
-    render();
+    document.getElementById("reset-btn")!.onclick = createParticles;
+    Object.values(inputs).forEach(input => input.oninput = createParticles);
+    setupCameraControls(canvas, camera, () => {});
+
+    createParticles();
+    frame();
 }
 
-window.addEventListener("load", main);
+init();

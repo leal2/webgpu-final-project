@@ -6,8 +6,9 @@ module.exports = {
     mode: "development",
     devtool: "inline-source-map",
     output: {
-        filename: "main.js",
+        filename: "bundle.js",
         path: path.resolve(__dirname, "dist"),
+        publicPath: "/",
     },
     module: {
         rules: [
@@ -16,7 +17,6 @@ module.exports = {
                 type: "asset/resource",
             },
             {
-                // Embed your WGSL files as strings
                 test: /\.wgsl$/i,
                 type: "asset/source",
             },
