@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+                           integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm"
+                           crossorigin="anonymous">
+
+    <title>WebGPU Basic Rendering</title>
+    <style>
+        .canvas-container {
+            display: flex;
+            justify-content: center;
+        }
+        #description {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12 text-center">
+                <h4>WebGPU Basic Rendering</h4>
+            </div>
+            <div red id="info">
+                <pre style="color:red;"></pre>
+            </div>
+        </div>
+        
+        <div class="row mt-3">
+            <div class="col-md-8 canvas-container">
+                <canvas id="webgpu-canvas" class="img-fluid" width="1200" height="1200"></canvas>
+                <div class="alert alert-danger" id="no-webgpu" style="display:none;">
+                    <h4>Error: Your browser does not support WebGPU</h4>
+                    <p>You can find out how to get access to it in Chrome Canary
+                    <a href="https://web.dev/gpu/#use">here</a>.</p>
+                </div>
+            </div>
+            
+            <div class="col-md-4" id="description">
+                
+                <label for="triangle-count" class="mt-2 mb-1">How many triangles?</label>
+                <input id="triangle-count" type="range" class="custom-range" min="1" max="1000" value="5">
+                <div class="text-muted">Count: <span id="triangle-count-value">5</span></div>
+                <button id="randomize-btn" class="btn btn-primary mt-3">Randomize Triangles</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="bundle.js"></script>
+</body>
+</html>
